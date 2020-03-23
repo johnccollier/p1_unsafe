@@ -2,24 +2,13 @@ var bcrypt = require('bcryptjs');
 var User = require('.././models/user.js');
 
 
-exports.tryLogin = function(req, res) {
-    User.findOne({'email':req.body.email,'password':req.body.password},function(err,data){
-        if(err){
-            res.send(err);
-        }else if(data){
-            res.send('User Login Successful');
-        }else {
-            res.send('Wrong Username Password Combination');
-        }
-    })
-};
 
 /*registerUser inplemented with callback function only */
 exports.registerUser = function(req, cb) {
     var hash = bcrypt.hashSync(req.body.password, bcrypt.genSaltSync(10));
-    var user = new User({
-        firstName: req.body.firstName,
-        lastName: req.body.lastName,
+    var user = new user({
+        FirstName: req.body.firstName,
+        FastName: req.body.lastName,
         email: req.body.email,
         password: hash
     });

@@ -7,7 +7,8 @@ var csrf = require('csurf'); //security for CSRF attacks
 var bcrypt = require('bcryptjs');
 
 //Set up mongoose connection
-mongoose.connect('mongodb://dblem:blueteam123@ds263018.mlab.com:63018/blue_team_data');
+var url = 'mongodb://dblem:blueteam123@ds263018.mlab.com:63018/blue_team_data';
+mongoose.connect(url);
 const db = mongoose.connection;
 
 //database error handling
@@ -36,6 +37,8 @@ var userController = require('./controllers/user.js');
 app.use(sessions({
     cookieName: 'session',
     secret: 'kjsdfbdbkdfbijbifvkmbouiefeufbefibqew', //private secret key for session data encryption
+    resave: true,
+    saveUninitialized: false,
     duration: 30 * 60 * 1000,
     activeDuration: 5 * 60 * 1000
 }));
@@ -56,7 +59,7 @@ app.use(express.urlencoded({ extended: true }));
 //Check if session is set then add user for every request
 app.use(function(req, res, next) {
     if (req.session && req.session.user) {
-        var user = userController.getUser(req.session.user.email, function(err, user) {
+        var user = userController.getUser(req.user.email, function(err, user) {
             if (user != null) {
                 req.user = user;
                 delete req.user.password;
@@ -83,22 +86,22 @@ function requireLogin(req, res, next) {
 
 //GET requests
 app.get('/', function(req, res) {
+  if (req.session.message) {
+    var x = req.session.message;
+    delete req.session.message;
+    res.render("home", {message: x});
+} else if (req.session.error) {
+    var x = req.session.error;
+    delete req.session.error;
+    res.render("home", {error: x});
+} else {
     res.render("home");
+}
 });
 
 
 app.get("/register", function(req, res) {
-    if (req.session.message) {
-        var x = req.session.message;
-        delete req.session.message;
-        res.render("register", {message: x,csrfToken: req.csrfToken()});
-    } else if (req.session.error) {
-        var x = req.session.error;
-        delete req.session.error;
-        res.render("register", {error: x,csrfToken: req.csrfToken()});
-    } else {
-        res.render("register", {csrfToken: req.csrfToken()});
-    }
+        res.render("register");
 });
 
 
@@ -107,21 +110,8 @@ app.get("/login", function(req, res) {
 });
 
 
-  app.get("/dashboard", function (req, res, next) {
-	User.findById(req.session.userId)
-	  .exec(function (error, user) {
-		if (error) {
-		  return next(error);
-		} else {
-		  if (user === null) {
-			var err = new Error('Not authorized! Go back!');
-			err.status = 400;
-			return next(err);
-		  } else {
-			return res.send('<h1>Name: </h1>' + user.username + '<h2>Mail: </h2>' + user.email + '<br><a type="button" href="/logout">Logout</a>')
-		  }
-		}
-	  });
+  app.get("/dashboard", requireLogin, function (req, res, next) {
+    res.render("dashboard");
   });
 
 
@@ -133,7 +123,26 @@ app.get("/login", function(req, res) {
 
 //POST requests
 app.post("/login", function(req, res) {
-    User.findOne({'email':req.body.email,'password':req.body.password},function(err,data){
+    User.findOne({ email: req.body.email })
+    .exec(function (err, user) {
+      if (err) {
+        res.render("login");
+      } else if (!user) {
+        var err = new Error('User not found.');
+        err.status = 401;
+        res.render("login");
+      }
+      bcrypt.compare(req.body.password, user.password, function (err, result) {
+        if (res) {
+          res.redirect('/dashboard');
+        } else {
+          res.render("login");
+        }
+      })
+    });
+});
+
+   /* User.findOne({'email':req.body.email,'password':req.body.password},function(err,data){
         if(err){
             res.send(err);
         }else if(data){
@@ -142,21 +151,30 @@ app.post("/login", function(req, res) {
         }else {
             res.send('Wrong Username Password Combination');
         }
-    })
-});
+    }) */
+
 
 /*on post managing function using call back functions*/
-app.post("/register", function(req, res) {
-    userController.registerUser(req, function(err, registered) {
-        if (registered == true) {
-            var message = "User registered successfully";
-            req.session.message = message;
-            res.redirect('/');
+app.post("/register", function(req, res, next) {
+    var hash = bcrypt.hashSync(req.body.password, bcrypt.genSaltSync(10));
+    var userData = {
+        FirstName: req.body.FirstName,
+        LastName: req.body.LastName,
+        email: req.body.email,
+        password: hash
+    }
+    User.create(userData, function (error, user) {
+        if (error) {
+          return next(error);
         } else {
-            req.session.error = err;
-            res.redirect("/register");
+          req.session.userId = user._id;
+          return res.redirect('/dashboard');
         }
-    });
+      });
+
+       
+
+
 });
 
 
